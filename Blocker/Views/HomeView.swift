@@ -26,6 +26,7 @@ struct HomeView: View {
                     .id("bottom")
                 }
             }
+            .scrollIndicators(.hidden)
             .onAppear {
                 #if DEBUG
                 if UserDefaults.standard.bool(forKey: "homeScrollToBottom") {
@@ -37,6 +38,15 @@ struct HomeView: View {
             // Pulling down past the top shows more hero color, not a white gap.
             .background(alignment: .top) {
                 Color.heroBackground.frame(height: 400).ignoresSafeArea()
+            }
+            // Keeps the hero number from sliding under the clock and Dynamic Island when scrolled.
+            .overlay(alignment: .top) {
+                GeometryReader { geometry in
+                    Color.heroBackground
+                        .frame(height: geometry.safeAreaInsets.top)
+                        .ignoresSafeArea(edges: .top)
+                }
+                .allowsHitTesting(false)
             }
             .navigationTitle("Blocker") // shown as the back button on the Instagram/YouTube screens
             .toolbar(.hidden, for: .navigationBar)
@@ -289,13 +299,16 @@ private struct FilmWeek: View {
         let isToday = Calendar.current.isDateInToday(day.date)
         let isSelected = selected == day.date
         let strong = isSelected || (selected == nil && isToday)
-        let frames = day.total == 0 ? 0 : max(1, Int((Double(day.total) / Double(unit)).rounded()))
+        // Full frames, plus a partly filled top frame for the remainder (3 reels at 5 a frame is 60%).
+        let fullFrames = day.total / unit
+        let remainder = day.total % unit
+        let frames = fullFrames + (remainder > 0 ? 1 : 0)
         let window = CGFloat(frames) * Self.pitch - 3
         let delay = Double(index) * 0.07
         VStack(spacing: 3) {
             Text("\(day.total)")
                 .font(.caption.weight(.bold))
-                .opacity(strong && day.total > 0 && fed ? 1 : 0)
+                .opacity((isToday || isSelected) && day.total > 0 && fed ? 1 : 0)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.2).delay(delay + 0.8), value: fed)
                 .padding(.bottom, 3)
             if frames > 0 {
@@ -303,8 +316,11 @@ private struct FilmWeek: View {
                 // below the baseline, runs up so the extra frames fly past and out the top, and stops
                 // with exactly this day's frames showing.
                 VStack(spacing: 3) {
-                    ForEach(0..<(Self.runFrames + frames), id: \.self) { _ in
-                        FilmFrame(strong: strong)
+                    ForEach(0..<(Self.runFrames + frames), id: \.self) { position in
+                        // The first frame left showing once the strip stops is the top of the stack.
+                        let isTop = position == Self.runFrames
+                        FilmFrame(strong: strong,
+                                  fill: isTop && remainder > 0 ? CGFloat(remainder) / CGFloat(unit) : 1)
                     }
                 }
                 .fixedSize()
@@ -332,10 +348,19 @@ private struct FilmWeek: View {
 /// One frame of film: a small cell with sprocket holes down both sides.
 private struct FilmFrame: View {
     let strong: Bool
+    /// How much of the frame is filled, from the bottom: below 1 for the top frame of a stack
+    /// whose count isn't a whole number of frames.
+    var fill: CGFloat = 1
 
     var body: some View {
         RoundedRectangle(cornerRadius: 2, style: .continuous)
-            .fill(strong ? Color.chartToday : Color.chartPast)
+            .fill(Color(.separator))
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(strong ? Color.chartToday : Color.chartPast)
+                    .frame(height: 10 * fill)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
             .frame(width: 28, height: 10)
             .overlay {
                 HStack {
