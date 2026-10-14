@@ -68,10 +68,9 @@
   let lastCounted = 0;
   let toast = null;
   let toastTimer = null;
-  function showToast() {
+  function showToast(text) {
     if (!toast) {
       toast = document.createElement('div');
-      toast.textContent = 'Reel blocked';
       toast.style.cssText =
         'position:fixed;left:50%;bottom:96px;z-index:2147483647;pointer-events:none;' +
         'padding:10px 18px;border-radius:999px;background:#FFD43B;color:#14110F;' +
@@ -81,6 +80,7 @@
         'transition:transform .25s cubic-bezier(.2,.9,.3,1.3),opacity .2s';
       document.documentElement.appendChild(toast);
     }
+    toast.textContent = typeof text === 'string' ? text : 'Reel blocked';
     toast.style.opacity = '1';
     toast.style.transform = 'translate(-50%,0) scale(1)';
     clearTimeout(toastTimer);
@@ -89,7 +89,7 @@
       toast.style.transform = 'translate(-50%,16px) scale(.9)';
     }, 1300);
   }
-  window.__blockerToast = showToast; // the app calls this for blocks it makes itself
+  window.__blockerToast = () => showToast(); // the app calls this for blocks it makes itself
 
   function report() {
     const counted = Date.now() - lastCounted > 3000;
@@ -177,7 +177,17 @@
     } catch (err) {
       return;
     }
-    if (url.origin !== location.origin || rules.redirects[url.pathname]) return;
+    if (url.origin !== location.origin) return;
+    const target = rules.redirects[url.pathname];
+    if (target) {
+      // Straight to the target. Letting the site navigate first would flash the page we're
+      // redirecting away from (Explore's reels grid), and changing the URL without a reload
+      // doesn't work: Instagram's router sends /explore/search/ back to /explore/.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      location.replace(target);
+      return;
+    }
     if (!isBlocked(url.pathname)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -262,17 +272,32 @@
 
     // The one reel the user opened from a DM, and the swipe lock on its viewer.
     let allowed = null; // { video, src, overlay }
+    let swipeStartY = null;
+    let swipeToasted = false;
+    function swipeStart(e) {
+      swipeStartY = e.touches && e.touches[0] ? e.touches[0].clientY : null;
+      swipeToasted = false;
+    }
     function blockSwipe(e) {
       if (e.pointerType && e.pointerType !== 'touch') return;
       e.preventDefault();
       e.stopPropagation();
+      // A real swipe (not a wobbly tap): say why nothing moves, once per swipe.
+      const y = e.touches && e.touches[0] ? e.touches[0].clientY : null;
+      if (!swipeToasted && swipeStartY !== null && y !== null && Math.abs(y - swipeStartY) > 40) {
+        swipeToasted = true;
+        showToast('One reel only');
+        post({ event: 'blocked', counted: false }); // haptic, but nothing new was blocked
+      }
     }
     function lockSwipe(overlay) {
+      overlay.addEventListener('touchstart', swipeStart, { capture: true, passive: true });
       overlay.addEventListener('touchmove', blockSwipe, { capture: true, passive: false });
       overlay.addEventListener('pointermove', blockSwipe, { capture: true, passive: false });
     }
     function release() {
       if (allowed && allowed.overlay) {
+        allowed.overlay.removeEventListener('touchstart', swipeStart, { capture: true });
         allowed.overlay.removeEventListener('touchmove', blockSwipe, { capture: true });
         allowed.overlay.removeEventListener('pointermove', blockSwipe, { capture: true });
       }
