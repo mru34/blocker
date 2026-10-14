@@ -12,6 +12,22 @@ extension Color {
     /// Text that sits on the yellow, a little softer than ink.
     static let brandYellowSecondary = Color(red: 0.361, green: 0.290, blue: 0.0)  // #5C4A00
 
+    static let brandRed = Color(red: 0.898, green: 0.220, blue: 0.231)  // #E5383B, the "no play" sticker
+
+    /// Home's top section and its type swap in dark mode: yellow on black instead of black on yellow.
+    static let heroBackground = adaptive(light: (1.0, 0.831, 0.231), dark: (0, 0, 0))
+    static let heroInk = adaptive(light: (0.078, 0.067, 0.059), dark: (1.0, 0.831, 0.231))
+    /// Home's apps band: the opposite of the hero.
+    static let bandBackground = adaptive(light: (0.078, 0.067, 0.059), dark: (1.0, 0.831, 0.231))
+    static let bandInk = adaptive(light: (1.0, 0.831, 0.231), dark: (0.078, 0.067, 0.059))
+
+    private static func adaptive(light: (Double, Double, Double), dark: (Double, Double, Double)) -> Color {
+        Color(UIColor { trait in
+            let c = trait.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
+        })
+    }
+
     /// Chart bars: today stands out, earlier days recede. Both are at least 3:1 against the card
     /// in light and dark mode.
     static let chartToday = Color(UIColor { $0.userInterfaceStyle == .dark

@@ -1,44 +1,42 @@
-import Charts
 import SwiftUI
 
+/// Home borrows the icon's language: a tilted poster number with the red "no play" sticker
+/// slapped on it, the apps on a solid band, the week as stacks of film frames (the reels you
+/// didn't watch), and milestones as a sticker sheet.
 struct HomeView: View {
     @ObservedObject private var stats = BlockStats.shared
     @ObservedObject private var rulesStore = RulesStore.shared
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 14) {
-                    // Our own header so the streak pill sits next to the title; a toolbar item
-                    // gets squashed into an icon-only glass button on iOS 26.
-                    HStack(alignment: .center) {
-                        Text("Blocker")
-                            .font(.largeTitle.bold())
-                        Spacer()
-                        StreakPill(days: stats.streak)
+                VStack(spacing: 0) {
+                    Hero(stats: stats)
+                    AppsBand(rules: rulesStore.rules)
+                    VStack(alignment: .leading, spacing: 36) {
+                        FilmWeek(days: stats.lastSevenDays)
+                        StickerSheet(stats: stats)
                     }
-                    .padding(.top, 8)
-
-                    HeroCard(stats: stats)
-
-                    HStack(spacing: 12) {
-                        NavigationLink {
-                            FilteredSiteView(title: "Instagram", site: .instagram, rules: rulesStore.rules.instagram)
-                        } label: {
-                            AppTile(name: "Instagram", systemImage: "camera", subtitle: "No Reels")
-                        }
-                        NavigationLink {
-                            FilteredSiteView(title: "YouTube", site: .youtube, rules: rulesStore.rules.youtube)
-                        } label: {
-                            AppTile(name: "YouTube", systemImage: "play.rectangle", subtitle: "No Shorts")
-                        }
-                    }
-
-                    BadgesRow(stats: stats)
-                    WeekCard(days: stats.lastSevenDays)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 32)
+                    .padding(.bottom, 40)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.systemBackground))
+                    .id("bottom")
                 }
-                .padding(.horizontal)
-                .padding(.bottom)
+            }
+            .onAppear {
+                #if DEBUG
+                if UserDefaults.standard.bool(forKey: "homeScrollToBottom") {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+                #endif
+            }
+            }
+            // Pulling down past the top shows more hero color, not a white gap.
+            .background(alignment: .top) {
+                Color.heroBackground.frame(height: 400).ignoresSafeArea()
             }
             .navigationTitle("Blocker") // shown as the back button on the Instagram/YouTube screens
             .toolbar(.hidden, for: .navigationBar)
@@ -47,228 +45,341 @@ struct HomeView: View {
     }
 }
 
-/// The big yellow card: today's number and what it adds up to.
-private struct HeroCard: View {
+// MARK: - Hero
+
+private struct Hero: View {
     @ObservedObject var stats: BlockStats
 
     private var sentence: String {
         stats.avoidedToday == 0
             ? "Every reel you skip is time back."
-            : "That's \(BlockStats.timeSavedInWords(reels: stats.avoidedToday)) back in your day."
+            : "That's \(BlockStats.timeSavedInWords(reels: stats.avoidedToday)) back."
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Reels avoided today")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.brandYellowSecondary)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center) {
+                Text("Blocker")
+                    .font(.system(size: 20, weight: .black).width(.expanded))
+                Spacer()
+                StreakSticker(days: stats.streak)
+            }
+            .padding(.top, 8)
+
+            // The number, tilted like the icon's B, with the sticker on its shoulder.
             Text("\(stats.avoidedToday)")
-                .font(.system(size: 76, weight: .bold))
-                .tracking(-2)
-                .foregroundStyle(Color.brandInk)
-                .padding(.vertical, -4)
+                .font(.system(size: 230, weight: .black).width(.compressed))
+                .tracking(-3)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .overlay(alignment: .topTrailing) {
+                    NoPlaySticker()
+                        .frame(width: 84, height: 84)
+                        .rotationEffect(.degrees(10))
+                        .offset(x: 52, y: 22)
+                }
+                .rotationEffect(.degrees(-6), anchor: .bottomLeading)
+                .padding(.top, 4)
+                .padding(.bottom, -62) // the line box has room for descenders the digits don't use
+
+            Text(stats.avoidedToday == 1 ? "reel you didn't watch today" : "reels you didn't watch today")
+                .font(.title3.weight(.bold))
             Text(sentence)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(Color.brandInk)
-            Text("\(stats.blockedToday) blocked · \(stats.hiddenToday) hidden in your feed")
-                .font(.footnote)
-                .foregroundStyle(Color.brandYellowSecondary)
-                .padding(.top, 2)
+                .font(.title3)
+            Text("\(stats.blockedToday) blocked, \(stats.hiddenToday) hidden in your feed")
+                .font(.footnote.weight(.medium))
+                .opacity(0.7)
+                .padding(.top, 10)
         }
+        .foregroundStyle(Color.heroInk)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .background(Color.brandYellow, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .accessibilityElement(children: .combine)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 28)
+        .background(Color.heroBackground)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(stats.avoidedToday) reels you didn't watch today. \(sentence) \(stats.blockedToday) blocked, \(stats.hiddenToday) hidden in your feed. \(stats.streak) day streak.")
     }
 }
 
-private struct AppTile: View {
-    let name: String
-    let systemImage: String
-    let subtitle: String
-
+/// The icon's red "no play" sign as a die-cut sticker.
+private struct NoPlaySticker: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 26) {
-            Image(systemName: systemImage)
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(Color.brandYellow)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.65))
+        GeometryReader { geometry in
+            let size = geometry.size.width
+            ZStack {
+                Circle().fill(.white)
+                Circle()
+                    .strokeBorder(Color.brandRed, lineWidth: size * 0.12)
+                    .padding(size * 0.06)
+                Triangle()
+                    .fill(Color.brandInk)
+                    .frame(width: size * 0.32, height: size * 0.36)
+                    .offset(x: size * 0.03)
+                Rectangle()
+                    .fill(Color.brandRed)
+                    .frame(width: size * 0.12, height: size * 0.78)
+                    .rotationEffect(.degrees(-45))
+            }
+            .shadow(color: .black.opacity(0.18), radius: 0, x: 2, y: 3) // sticker edge, not a soft glow
+        }
+        .accessibilityHidden(true)
+    }
+
+    private struct Triangle: Shape {
+        func path(in rect: CGRect) -> Path {
+            Path { path in
+                path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+                path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+                path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+                path.closeSubpath()
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color.brandTile, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 
-private struct StreakPill: View {
+private struct StreakSticker: View {
     let days: Int
 
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "flame.fill")
-            Text(days <= 1 ? "Day 1" : "\(days)-day streak")
+            Text(days <= 1 ? "Day 1" : "\(days) days in a row")
         }
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(Color.brandInk)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Color.brandYellow, in: Capsule())
-            .accessibilityLabel(days <= 1 ? "First day using Blocker" : "\(days) days in a row using Blocker")
+        .font(.subheadline.weight(.heavy))
+        .foregroundStyle(Color.bandInk)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Color.bandBackground, in: Capsule())
+        .overlay(Capsule().strokeBorder(.white, lineWidth: 2.5))
+        .rotationEffect(.degrees(4))
+        .accessibilityHidden(true) // read as part of the hero
     }
 }
 
-/// Milestones, earned ones in yellow and the next ones locked.
-private struct BadgesRow: View {
+// MARK: - Apps
+
+private struct AppsBand: View {
+    let rules: RulesFile
+
+    var body: some View {
+        VStack(spacing: 0) {
+            NavigationLink {
+                FilteredSiteView(title: "Instagram", site: .instagram, rules: rules.instagram)
+            } label: {
+                AppRow(name: "Instagram", detail: "Reels off")
+            }
+            Rectangle().fill(Color.bandInk.opacity(0.25)).frame(height: 1)
+            NavigationLink {
+                FilteredSiteView(title: "YouTube", site: .youtube, rules: rules.youtube)
+            } label: {
+                AppRow(name: "YouTube", detail: "Shorts off")
+            }
+        }
+        .padding(.horizontal, 20)
+        .background(Color.bandBackground)
+    }
+}
+
+private struct AppRow: View {
+    let name: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(name)
+                .font(.system(size: 30, weight: .black).width(.expanded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Spacer()
+            Text(detail)
+                .font(.subheadline.weight(.semibold))
+                .opacity(0.75)
+            Image(systemName: "chevron.right")
+                .font(.subheadline.weight(.bold))
+        }
+        .foregroundStyle(Color.bandInk)
+        .padding(.vertical, 22)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens \(name) with \(detail.lowercased())")
+    }
+}
+
+// MARK: - Week
+
+/// Each day is a stack of film frames, one frame per `unit` reels. Tap a day to see its number.
+private struct FilmWeek: View {
+    let days: [BlockStats.Day]
+    @State private var selected: Date?
+
+    private static let maxFrames = 14
+
+    /// Reels per frame: 5, or more on heavy weeks so the tallest stack stays on screen.
+    private var unit: Int {
+        let most = days.map(\.total).max() ?? 0
+        let needed = Int((Double(most) / Double(Self.maxFrames)).rounded(.up))
+        return max(5, Int((Double(needed) / 5).rounded(.up)) * 5)
+    }
+
+    private var weekTotal: Int { days.reduce(0) { $0 + $1.total } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("This week")
+                    .font(.system(size: 22, weight: .black).width(.expanded))
+                Spacer()
+                Text(selectedText ?? "\(BlockStats.timeSaved(reels: weekTotal)) back")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(alignment: .bottom, spacing: 0) {
+                ForEach(days) { day in
+                    column(for: day)
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                        .onTapGesture { selected = selected == day.date ? nil : day.date }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(dayName(day))
+                        .accessibilityValue("\(day.total) reels")
+                }
+            }
+
+            Text("Each frame is \(unit) reels you didn't watch.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var selectedText: String? {
+        guard let selected, let day = days.first(where: { $0.date == selected }) else { return nil }
+        return "\(dayName(day)): \(day.total) reels"
+    }
+
+    @ViewBuilder
+    private func column(for day: BlockStats.Day) -> some View {
+        let isToday = Calendar.current.isDateInToday(day.date)
+        let isSelected = selected == day.date
+        let strong = isSelected || (selected == nil && isToday)
+        let frames = day.total == 0 ? 0 : max(1, Int((Double(day.total) / Double(unit)).rounded()))
+        VStack(spacing: 3) {
+            Text("\(day.total)")
+                .font(.caption.weight(.bold))
+                .opacity(strong && day.total > 0 ? 1 : 0)
+                .padding(.bottom, 3)
+            ForEach(0..<frames, id: \.self) { _ in
+                FilmFrame(strong: strong)
+            }
+            if frames == 0 {
+                Rectangle().fill(Color(.separator)).frame(width: 26, height: 2)
+            }
+            Text(isToday ? "Today" : day.date.formatted(.dateTime.weekday(.narrow)))
+                .font(.caption2.weight(strong ? .bold : .regular))
+                .foregroundStyle(strong ? .primary : .secondary)
+                .fixedSize()
+                .padding(.top, 6)
+        }
+    }
+
+    private func dayName(_ day: BlockStats.Day) -> String {
+        Calendar.current.isDateInToday(day.date) ? "Today" : day.date.formatted(.dateTime.weekday(.wide))
+    }
+}
+
+/// One frame of film: a small cell with sprocket holes down both sides.
+private struct FilmFrame: View {
+    let strong: Bool
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(strong ? Color.chartToday : Color.chartPast)
+            .frame(width: 28, height: 10)
+            .overlay {
+                HStack {
+                    sprockets
+                    Spacer()
+                    sprockets
+                }
+                .padding(.horizontal, 2.5)
+            }
+    }
+
+    private var sprockets: some View {
+        VStack(spacing: 2) {
+            RoundedRectangle(cornerRadius: 0.5).frame(width: 2.5, height: 2.5)
+            RoundedRectangle(cornerRadius: 0.5).frame(width: 2.5, height: 2.5)
+        }
+        .foregroundStyle(Color(.systemBackground))
+    }
+}
+
+// MARK: - Stickers
+
+/// Milestones as a sticker sheet: earned ones stuck on at an angle, the rest as dashed outlines.
+private struct StickerSheet: View {
     @ObservedObject var stats: BlockStats
 
-    private struct Badge: Identifiable {
+    private struct Sticker: Identifiable {
         let title: String
         let systemImage: String
         let earned: Bool
+        let tilt: Double
         var id: String { title }
     }
 
-    private var badges: [Badge] {
+    private var stickers: [Sticker] {
         [
-            Badge(title: "First reel", systemImage: "hand.raised.fill", earned: stats.totalAvoided >= 1),
-            Badge(title: "100 avoided", systemImage: "trophy.fill", earned: stats.totalAvoided >= 100),
-            Badge(title: "7-day streak", systemImage: "flame.fill", earned: stats.streak >= 7),
-            Badge(title: "1,000 avoided", systemImage: "crown.fill", earned: stats.totalAvoided >= 1000),
+            Sticker(title: "First reel skipped", systemImage: "hand.raised.fill", earned: stats.totalAvoided >= 1, tilt: -7),
+            Sticker(title: "100 skipped", systemImage: "trophy.fill", earned: stats.totalAvoided >= 100, tilt: 5),
+            Sticker(title: "7 days in a row", systemImage: "flame.fill", earned: stats.streak >= 7, tilt: -3),
+            Sticker(title: "1,000 skipped", systemImage: "crown.fill", earned: stats.totalAvoided >= 1000, tilt: 8),
         ]
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Badges")
-                .font(.headline)
-            HStack(spacing: 8) {
-                ForEach(badges) { badge in
-                    VStack(spacing: 6) {
-                        Image(systemName: badge.earned ? badge.systemImage : "lock.fill")
-                            .font(.system(size: 20, weight: .semibold))
-                        Text(badge.title)
-                            .font(.caption2.weight(.semibold))
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Stickers")
+                .font(.system(size: 22, weight: .black).width(.expanded))
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(stickers) { sticker in
+                    VStack(spacing: 10) {
+                        badge(for: sticker)
+                            .frame(width: 64, height: 64)
+                        Text(sticker.title)
+                            .font(.caption.weight(sticker.earned ? .semibold : .regular))
+                            .foregroundStyle(sticker.earned ? .primary : .tertiary)
                             .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.8)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .foregroundStyle(badge.earned ? Color.brandInk : Color(.tertiaryLabel))
-                    .frame(maxWidth: .infinity, minHeight: 72)
-                    .padding(.horizontal, 4)
-                    .background(badge.earned ? Color.brandYellow : Color(.secondarySystemBackground),
-                                in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(badge.title), \(badge.earned ? "earned" : "locked")")
+                    .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(sticker.title), \(sticker.earned ? "earned" : "not yet")")
                 }
             }
         }
     }
-}
 
-/// Reels avoided per day for the last week. Tap a bar to see that day's number.
-private struct WeekCard: View {
-    let days: [BlockStats.Day]
-    @State private var selected: Date?
-
-    private var weekTotal: Int { days.reduce(0) { $0 + $1.total } }
-
-    private var caption: String {
-        if let selected, let day = days.first(where: { $0.date == selected }) {
-            return "\(label(for: day)): \(day.total) reels"
+    @ViewBuilder
+    private func badge(for sticker: Sticker) -> some View {
+        if sticker.earned {
+            ZStack {
+                Circle().fill(Color.brandYellow)
+                Image(systemName: sticker.systemImage)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Color.brandInk)
+            }
+            .overlay(Circle().strokeBorder(.white, lineWidth: 3.5))
+            .shadow(color: .black.opacity(0.18), radius: 0, x: 2, y: 3)
+            .rotationEffect(.degrees(sticker.tilt))
+        } else {
+            ZStack {
+                Circle().strokeBorder(Color(.tertiaryLabel), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
         }
-        return "\(BlockStats.timeSaved(reels: weekTotal)) saved"
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("This week")
-                    .font(.headline)
-                Spacer()
-                Text(caption)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Chart(days) { day in
-                BarMark(
-                    x: .value("Day", day.date, unit: .day),
-                    y: .value("Reels avoided", day.total),
-                    width: .ratio(0.5)
-                )
-                .cornerRadius(4)
-                .foregroundStyle(isHighlighted(day) ? Color.chartToday : Color.chartPast)
-                .annotation(position: .top, spacing: 4) {
-                    if isHighlighted(day), day.total > 0 {
-                        Text("\(day.total)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.primary)
-                    }
-                }
-                .accessibilityLabel(label(for: day))
-                .accessibilityValue("\(day.total) reels avoided")
-            }
-            .chartYAxis {
-                AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) {
-                    AxisGridLine().foregroundStyle(Color(.separator).opacity(0.5))
-                    AxisValueLabel().foregroundStyle(Color(.secondaryLabel))
-                }
-            }
-            .chartXAxis {
-                AxisMarks(values: days.map(\.date)) { value in
-                    AxisValueLabel {
-                        if let date = value.as(Date.self) {
-                            let isToday = Calendar.current.isDateInToday(date)
-                            Text(isToday ? "Today" : date.formatted(.dateTime.weekday(.narrow)))
-                                .fontWeight(isToday ? .semibold : .regular)
-                                .foregroundStyle(isToday ? Color(.label) : Color(.secondaryLabel))
-                        }
-                    }
-                }
-            }
-            .chartOverlay { proxy in
-                GeometryReader { geometry in
-                    Rectangle().fill(.clear).contentShape(Rectangle())
-                        .gesture(DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                let x = value.location.x - geometry[proxy.plotAreaFrame].origin.x
-                                if let date: Date = proxy.value(atX: x) {
-                                    selected = days.first { Calendar.current.isDate($0.date, inSameDayAs: date) }?.date
-                                }
-                            }
-                            .onEnded { _ in
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { selected = nil }
-                            })
-                }
-            }
-            .frame(height: 150)
-            .padding(.top, 12)
-
-            Text("Time saved assumes about \(BlockStats.secondsPerReel) seconds per reel.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .padding(.top, 4)
-        }
-        .padding(18)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-    }
-
-    /// Today, or the tapped bar while one is selected.
-    private func isHighlighted(_ day: BlockStats.Day) -> Bool {
-        if let selected { return day.date == selected }
-        return Calendar.current.isDateInToday(day.date)
-    }
-
-    private func label(for day: BlockStats.Day) -> String {
-        if Calendar.current.isDateInToday(day.date) { return "Today" }
-        return day.date.formatted(.dateTime.weekday(.abbreviated))
     }
 }
 
