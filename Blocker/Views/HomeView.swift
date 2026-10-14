@@ -208,11 +208,19 @@ private struct AppRow: View {
 // MARK: - Week
 
 /// Each day is a stack of film frames, one frame per `unit` reels. Tap a day to see its number.
+/// When the week first scrolls into view, each stack runs up out of the baseline like a reel being
+/// swiped and stops dead at its count, the days one after another, today last.
 private struct FilmWeek: View {
     let days: [BlockStats.Day]
     @State private var selected: Date?
+    @State private var fed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let maxFrames = 14
+    /// Extra frames that run past before each stack stops.
+    private static let runFrames = 8
+    /// Frame height (10) plus spacing (3).
+    private static let pitch: CGFloat = 13
 
     /// Reels per frame: 5, or more on heavy weeks so the tallest stack stays on screen.
     private var unit: Int {
@@ -235,8 +243,8 @@ private struct FilmWeek: View {
             }
 
             HStack(alignment: .bottom, spacing: 0) {
-                ForEach(days) { day in
-                    column(for: day)
+                ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
+                    column(for: day, index: index)
                         .frame(maxWidth: .infinity)
                         .contentShape(Rectangle())
                         .onTapGesture { selected = selected == day.date ? nil : day.date }
@@ -246,9 +254,28 @@ private struct FilmWeek: View {
                 }
             }
 
+            .background {
+                // Run once the stacks are on screen above the tab bar, not while scrolled out of sight.
+                GeometryReader { geometry in
+                    let bottom = geometry.frame(in: .global).maxY
+                    Color.clear
+                        .onAppear { feedIfVisible(bottom) }
+                        .onChange(of: bottom) { feedIfVisible($0) }
+                }
+            }
+
             Text("Each frame is \(unit) reels you didn't watch.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+        .onAppear {
+            if reduceMotion { fed = true }
+        }
+    }
+
+    private func feedIfVisible(_ bottom: CGFloat) {
+        if !fed, bottom > 0, bottom < UIScreen.main.bounds.height - 100 {
+            fed = true
         }
     }
 
@@ -258,18 +285,33 @@ private struct FilmWeek: View {
     }
 
     @ViewBuilder
-    private func column(for day: BlockStats.Day) -> some View {
+    private func column(for day: BlockStats.Day, index: Int) -> some View {
         let isToday = Calendar.current.isDateInToday(day.date)
         let isSelected = selected == day.date
         let strong = isSelected || (selected == nil && isToday)
         let frames = day.total == 0 ? 0 : max(1, Int((Double(day.total) / Double(unit)).rounded()))
+        let window = CGFloat(frames) * Self.pitch - 3
+        let delay = Double(index) * 0.07
         VStack(spacing: 3) {
             Text("\(day.total)")
                 .font(.caption.weight(.bold))
-                .opacity(strong && day.total > 0 ? 1 : 0)
+                .opacity(strong && day.total > 0 && fed ? 1 : 0)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.2).delay(delay + 0.8), value: fed)
                 .padding(.bottom, 3)
-            ForEach(0..<frames, id: \.self) { _ in
-                FilmFrame(strong: strong)
+            if frames > 0 {
+                // A strip longer than the stack, seen through a window the stack's size: it starts
+                // below the baseline, runs up so the extra frames fly past and out the top, and stops
+                // with exactly this day's frames showing.
+                VStack(spacing: 3) {
+                    ForEach(0..<(Self.runFrames + frames), id: \.self) { _ in
+                        FilmFrame(strong: strong)
+                    }
+                }
+                .fixedSize()
+                .offset(y: fed ? -CGFloat(Self.runFrames) * Self.pitch : window + 3)
+                .frame(height: window, alignment: .top)
+                .clipped()
+                .animation(reduceMotion ? nil : .timingCurve(0.1, 0.75, 0.2, 1, duration: 0.95).delay(delay), value: fed)
             }
             if frames == 0 {
                 Rectangle().fill(Color(.separator)).frame(width: 26, height: 2)
