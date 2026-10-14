@@ -125,6 +125,10 @@ final class SiteSession: NSObject, ObservableObject, WKNavigationDelegate, WKUID
     /// After this long out of sight, reopening reloads the page so the feed isn't stale.
     private static let staleAfter: TimeInterval = 30 * 60
 
+    /// The loading screen never stays up longer than this once the user is looking at it;
+    /// after that the site's own loading animation takes over.
+    private static let maxLoadingScreen: TimeInterval = 2
+
     let webView: WKWebView
     private(set) var rules: SiteRules
     private let createdAt = Date()
@@ -176,6 +180,9 @@ final class SiteSession: NSObject, ObservableObject, WKNavigationDelegate, WKUID
     private func beginLoading() {
         loadID += 1
         isReady = false
+        if hiddenSince == nil, webView.window != nil {
+            capLoadingScreen()
+        }
     }
 
     private func markReady() {
@@ -212,6 +219,16 @@ final class SiteSession: NSObject, ObservableObject, WKNavigationDelegate, WKUID
             webView.reload()
         }
         hiddenSince = nil
+        capLoadingScreen()
+    }
+
+    private func capLoadingScreen() {
+        guard !isReady else { return }
+        let load = loadID
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.maxLoadingScreen) { [weak self] in
+            guard let self, self.loadID == load else { return }
+            self.markReady()
+        }
     }
 
     func didHide() {
@@ -252,7 +269,7 @@ final class SiteSession: NSObject, ObservableObject, WKNavigationDelegate, WKUID
         // If filter.js never says the page is ready (e.g. readySelector no longer matches),
         // don't keep the loading screen up for long.
         let load = loadID
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             guard let self, self.loadID == load else { return }
             self.markReady()
         }
