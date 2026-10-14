@@ -5,6 +5,13 @@ extension Color {
     static let brandYellow = Color(red: 1.0, green: 0.831, blue: 0.231)  // #FFD43B
     static let brandInk = Color(red: 0.078, green: 0.067, blue: 0.059)     // #14110F
 
+    /// App tiles on Home: ink in light mode, a raised dark gray in dark mode (ink would vanish on black).
+    static let brandTile = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 0.173, green: 0.165, blue: 0.149, alpha: 1)     // #2C2A26
+        : UIColor(red: 0.078, green: 0.067, blue: 0.059, alpha: 1) })  // #14110F
+    /// Text that sits on the yellow, a little softer than ink.
+    static let brandYellowSecondary = Color(red: 0.361, green: 0.290, blue: 0.0)  // #5C4A00
+
     /// Chart bars: today stands out, earlier days recede. Both are at least 3:1 against the card
     /// in light and dark mode.
     static let chartToday = Color(UIColor { $0.userInterfaceStyle == .dark

@@ -6,6 +6,7 @@ struct BlockerApp: App {
         WindowGroup {
             RootTabView()
                 .task {
+                    BlockStats.shared.recordActiveDay()
                     // Instagram's site takes ~10 s to load, so start it now, before the user taps it.
                     SiteSession.preload(.instagram, rules: RulesStore.shared.rules.instagram)
                     await RulesStore.shared.refresh()
@@ -13,6 +14,7 @@ struct BlockerApp: App {
                     await RuleHealth.shared.sendReports(to: rules.healthReportURL, rulesVersion: rules.version)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    BlockStats.shared.recordActiveDay()
                     Task { await RulesStore.shared.refresh() }
                 }
         }

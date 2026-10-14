@@ -8,53 +8,167 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
-                    TodayCard(stats: stats)
-                    WeekCard(days: stats.lastSevenDays)
+                VStack(spacing: 14) {
+                    // Our own header so the streak pill sits next to the title; a toolbar item
+                    // gets squashed into an icon-only glass button on iOS 26.
+                    HStack(alignment: .center) {
+                        Text("Blocker")
+                            .font(.largeTitle.bold())
+                        Spacer()
+                        StreakPill(days: stats.streak)
+                    }
+                    .padding(.top, 8)
 
-                    VStack(spacing: 12) {
+                    HeroCard(stats: stats)
+
+                    HStack(spacing: 12) {
                         NavigationLink {
                             FilteredSiteView(title: "Instagram", site: .instagram, rules: rulesStore.rules.instagram)
                         } label: {
-                            AppButtonLabel(name: "Instagram", systemImage: "camera", subtitle: "No Reels, no Explore")
+                            AppTile(name: "Instagram", systemImage: "camera", subtitle: "No Reels")
                         }
-
                         NavigationLink {
                             FilteredSiteView(title: "YouTube", site: .youtube, rules: rulesStore.rules.youtube)
                         } label: {
-                            AppButtonLabel(name: "YouTube", systemImage: "play.rectangle", subtitle: "No Shorts")
+                            AppTile(name: "YouTube", systemImage: "play.rectangle", subtitle: "No Shorts")
                         }
                     }
+
+                    BadgesRow(stats: stats)
+                    WeekCard(days: stats.lastSevenDays)
                 }
-                .padding()
+                .padding(.horizontal)
+                .padding(.bottom)
             }
-            .navigationTitle("Blocker")
+            .navigationTitle("Blocker") // shown as the back button on the Instagram/YouTube screens
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear { stats.refresh() }
         }
     }
 }
 
-/// Today's headline number and what it adds up to.
-private struct TodayCard: View {
+/// The big yellow card: today's number and what it adds up to.
+private struct HeroCard: View {
     @ObservedObject var stats: BlockStats
 
+    private var sentence: String {
+        stats.avoidedToday == 0
+            ? "Every reel you skip is time back."
+            : "That's \(BlockStats.timeSavedInWords(reels: stats.avoidedToday)) back in your day."
+    }
+
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("Reels avoided today")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.brandYellowSecondary)
             Text("\(stats.avoidedToday)")
-                .font(.system(size: 64, weight: .semibold))
-            Text("≈ \(BlockStats.timeSaved(reels: stats.avoidedToday)) saved")
-                .font(.headline)
+                .font(.system(size: 76, weight: .bold))
+                .tracking(-2)
+                .foregroundStyle(Color.brandInk)
+                .padding(.vertical, -4)
+            Text(sentence)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.brandInk)
             Text("\(stats.blockedToday) blocked · \(stats.hiddenToday) hidden in your feed")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.brandYellowSecondary)
+                .padding(.top, 2)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(Color.brandYellow, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct AppTile: View {
+    let name: String
+    let systemImage: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 26) {
+            Image(systemName: systemImage)
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(Color.brandYellow)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.65))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.brandTile, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+private struct StreakPill: View {
+    let days: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "flame.fill")
+            Text(days <= 1 ? "Day 1" : "\(days)-day streak")
+        }
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.brandInk)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.brandYellow, in: Capsule())
+            .accessibilityLabel(days <= 1 ? "First day using Blocker" : "\(days) days in a row using Blocker")
+    }
+}
+
+/// Milestones, earned ones in yellow and the next ones locked.
+private struct BadgesRow: View {
+    @ObservedObject var stats: BlockStats
+
+    private struct Badge: Identifiable {
+        let title: String
+        let systemImage: String
+        let earned: Bool
+        var id: String { title }
+    }
+
+    private var badges: [Badge] {
+        [
+            Badge(title: "First reel", systemImage: "hand.raised.fill", earned: stats.totalAvoided >= 1),
+            Badge(title: "100 avoided", systemImage: "trophy.fill", earned: stats.totalAvoided >= 100),
+            Badge(title: "7-day streak", systemImage: "flame.fill", earned: stats.streak >= 7),
+            Badge(title: "1,000 avoided", systemImage: "crown.fill", earned: stats.totalAvoided >= 1000),
+        ]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Badges")
+                .font(.headline)
+            HStack(spacing: 8) {
+                ForEach(badges) { badge in
+                    VStack(spacing: 6) {
+                        Image(systemName: badge.earned ? badge.systemImage : "lock.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                        Text(badge.title)
+                            .font(.caption2.weight(.semibold))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundStyle(badge.earned ? Color.brandInk : Color(.tertiaryLabel))
+                    .frame(maxWidth: .infinity, minHeight: 72)
+                    .padding(.horizontal, 4)
+                    .background(badge.earned ? Color.brandYellow : Color(.secondarySystemBackground),
+                                in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(badge.title), \(badge.earned ? "earned" : "locked")")
+                }
+            }
+        }
     }
 }
 
@@ -67,22 +181,25 @@ private struct WeekCard: View {
 
     private var caption: String {
         if let selected, let day = days.first(where: { $0.date == selected }) {
-            return "\(label(for: day)): \(day.total) reels · ≈ \(BlockStats.timeSaved(reels: day.total))"
+            return "\(label(for: day)): \(day.total) reels"
         }
-        return "\(weekTotal) reels · ≈ \(BlockStats.timeSaved(reels: weekTotal)) saved"
+        return "\(BlockStats.timeSaved(reels: weekTotal)) saved"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Last 7 days")
-                .font(.headline)
-            Text(caption)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline) {
+                Text("This week")
+                    .font(.headline)
+                Spacer()
+                Text(caption)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
             Chart(days) { day in
                 BarMark(
-                    x: .value("Day", label(for: day)),
+                    x: .value("Day", day.date, unit: .day),
                     y: .value("Reels avoided", day.total),
                     width: .ratio(0.5)
                 )
@@ -105,7 +222,16 @@ private struct WeekCard: View {
                 }
             }
             .chartXAxis {
-                AxisMarks { AxisValueLabel().foregroundStyle(Color(.secondaryLabel)) }
+                AxisMarks(values: days.map(\.date)) { value in
+                    AxisValueLabel {
+                        if let date = value.as(Date.self) {
+                            let isToday = Calendar.current.isDateInToday(date)
+                            Text(isToday ? "Today" : date.formatted(.dateTime.weekday(.narrow)))
+                                .fontWeight(isToday ? .semibold : .regular)
+                                .foregroundStyle(isToday ? Color(.label) : Color(.secondaryLabel))
+                        }
+                    }
+                }
             }
             .chartOverlay { proxy in
                 GeometryReader { geometry in
@@ -113,8 +239,8 @@ private struct WeekCard: View {
                         .gesture(DragGesture(minimumDistance: 0)
                             .onChanged { value in
                                 let x = value.location.x - geometry[proxy.plotAreaFrame].origin.x
-                                if let name: String = proxy.value(atX: x) {
-                                    selected = days.first { label(for: $0) == name }?.date
+                                if let date: Date = proxy.value(atX: x) {
+                                    selected = days.first { Calendar.current.isDate($0.date, inSameDayAs: date) }?.date
                                 }
                             }
                             .onEnded { _ in
@@ -130,8 +256,8 @@ private struct WeekCard: View {
                 .foregroundStyle(.tertiary)
                 .padding(.top, 4)
         }
-        .padding(20)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(18)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
     /// Today, or the tapped bar while one is selected.
@@ -143,31 +269,6 @@ private struct WeekCard: View {
     private func label(for day: BlockStats.Day) -> String {
         if Calendar.current.isDateInToday(day.date) { return "Today" }
         return day.date.formatted(.dateTime.weekday(.abbreviated))
-    }
-}
-
-private struct AppButtonLabel: View {
-    let name: String
-    let systemImage: String
-    let subtitle: String
-
-    var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: systemImage)
-                .font(.title2)
-                .foregroundStyle(Color.brandInk)
-                .frame(width: 44, height: 44)
-                .background(Color.brandYellow, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.headline)
-                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .foregroundStyle(.primary)
     }
 }
 
