@@ -1,6 +1,13 @@
 import Foundation
 
-/// What to block on one site. Phase 3 will fetch these from our server; for now they're bundled.
+/// The whole rules file: bundled as rules.json and fetched from our server by RulesStore.
+struct RulesFile: Codable, Equatable {
+    var version: Int
+    var instagram: SiteRules
+    var youtube: SiteRules
+}
+
+/// What to block on one site. Only homeURL is required in the JSON; everything else defaults to empty.
 struct SiteRules: Codable, Equatable {
     var homeURL: URL
     /// A page is blocked if its path contains any of these...
@@ -18,6 +25,18 @@ struct SiteRules: Codable, Equatable {
     var videoAllowedPaths: [String]?
     /// Clicked when a blocked video plays in a full-screen viewer (e.g. a reel opened from DMs).
     var viewerCloseSelector: String?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        homeURL = try container.decode(URL.self, forKey: .homeURL)
+        blockedPaths = try container.decodeIfPresent([String].self, forKey: .blockedPaths) ?? []
+        allowedPaths = try container.decodeIfPresent([String].self, forKey: .allowedPaths) ?? []
+        redirects = try container.decodeIfPresent([String: String].self, forKey: .redirects) ?? [:]
+        hideSelectors = try container.decodeIfPresent([String].self, forKey: .hideSelectors) ?? []
+        collapseSelectors = try container.decodeIfPresent([String].self, forKey: .collapseSelectors) ?? []
+        videoAllowedPaths = try container.decodeIfPresent([String].self, forKey: .videoAllowedPaths)
+        viewerCloseSelector = try container.decodeIfPresent(String.self, forKey: .viewerCloseSelector)
+    }
 
     func isBlocked(path: String) -> Bool {
         if allowedPaths.contains(where: { path.hasPrefix($0) }) { return false }
@@ -37,43 +56,4 @@ struct SiteRules: Codable, Equatable {
         guard let host else { return false }
         return host == domain || host.hasSuffix("." + domain)
     }
-}
-
-extension SiteRules {
-    // Selectors are starting guesses: check them against the live sites in Safari's Web Inspector.
-    static let instagram = SiteRules(
-        homeURL: URL(string: "https://www.instagram.com/")!,
-        blockedPaths: ["/reels/", "/reel/", "/explore/"],
-        // Search lives under /explore/search/, so keep it reachable.
-        allowedPaths: ["/explore/search"],
-        // The Explore tab goes straight to search instead of the reels grid.
-        redirects: ["/explore/": "/explore/search/", "/explore": "/explore/search/"],
-        hideSelectors: [
-            "a[href*='/reels/']",
-        ],
-        // Every Instagram video is a reel now, so video posts go too.
-        collapseSelectors: [
-            "article:has(a[href*='/reel/'])",
-            "article:has(video)",
-        ],
-        videoAllowedPaths: ["/stories/"],
-        viewerCloseSelector: "svg[aria-label='Close']"
-    )
-
-    static let youtube = SiteRules(
-        homeURL: URL(string: "https://m.youtube.com/")!,
-        blockedPaths: ["/shorts"],
-        allowedPaths: [],
-        redirects: [:],
-        hideSelectors: [
-            "ytm-reel-shelf-renderer",
-            "ytm-shorts-lockup-view-model",
-            "ytm-rich-section-renderer:has(ytm-shorts-lockup-view-model)",
-            "a[href^='/shorts']",
-            "ytm-pivot-bar-item-renderer:has(.pivot-shorts)",
-        ],
-        collapseSelectors: [],
-        videoAllowedPaths: nil,
-        viewerCloseSelector: nil
-    )
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @ObservedObject private var stats = BlockStats.shared
+    @ObservedObject private var rulesStore = RulesStore.shared
 
     var body: some View {
         NavigationStack {
@@ -16,13 +17,13 @@ struct HomeView: View {
 
                 VStack(spacing: 12) {
                     NavigationLink {
-                        FilteredSiteView(title: "Instagram", rules: .instagram)
+                        FilteredSiteView(title: "Instagram", rules: rulesStore.rules.instagram)
                     } label: {
                         AppButtonLabel(name: "Instagram", systemImage: "camera", subtitle: "No Reels, no Explore")
                     }
 
                     NavigationLink {
-                        FilteredSiteView(title: "YouTube", rules: .youtube)
+                        FilteredSiteView(title: "YouTube", rules: rulesStore.rules.youtube)
                     } label: {
                         AppButtonLabel(name: "YouTube", systemImage: "play.rectangle", subtitle: "No Shorts")
                     }

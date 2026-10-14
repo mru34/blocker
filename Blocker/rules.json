@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "instagram": {
+    "homeURL": "https://www.instagram.com/",
+    "blockedPaths": ["/reels/", "/reel/", "/explore/"],
+    "allowedPaths": ["/explore/search"],
+    "redirects": {
+      "/explore/": "/explore/search/",
+      "/explore": "/explore/search/"
+    },
+    "hideSelectors": ["a[href*='/reels/']"],
+    "collapseSelectors": [
+      "article:has(a[href*='/reel/'])",
+      "article:has(video)"
+    ],
+    "videoAllowedPaths": ["/stories/"],
+    "viewerCloseSelector": "svg[aria-label='Close']"
+  },
+  "youtube": {
+    "homeURL": "https://m.youtube.com/",
+    "blockedPaths": ["/shorts"],
+    "hideSelectors": [
+      "ytm-reel-shelf-renderer",
+      "ytm-shorts-lockup-view-model",
+      "ytm-rich-section-renderer:has(ytm-shorts-lockup-view-model)",
+      "a[href^='/shorts']",
+      "ytm-pivot-bar-item-renderer:has(.pivot-shorts)"
+    ]
+  }
+}

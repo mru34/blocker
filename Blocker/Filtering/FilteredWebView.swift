@@ -64,19 +64,10 @@ struct FilteredWebView: UIViewRepresentable {
         config.allowsInlineMediaPlayback = true
 
         let contentController = config.userContentController
-        contentController.addUserScript(WKUserScript(
-            source: Self.filterScript(for: rules),
-            injectionTime: .atDocumentEnd,
-            forMainFrameOnly: true
-        ))
+        Self.installScripts(for: rules, into: contentController)
         contentController.add(context.coordinator, name: Self.messageHandlerName)
-
         #if DEBUG
-        if let url = Bundle.main.url(forResource: "debug", withExtension: "js"),
-           let source = try? String(contentsOf: url, encoding: .utf8) {
-            contentController.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
-            contentController.add(context.coordinator, name: Self.debugHandlerName)
-        }
+        contentController.add(context.coordinator, name: Self.debugHandlerName)
         #endif
 
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -94,12 +85,34 @@ struct FilteredWebView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {}
+    // New rules arrived from the server while this screen is open: re-inject and reload.
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        guard context.coordinator.rules != rules else { return }
+        context.coordinator.rules = rules
+        let contentController = webView.configuration.userContentController
+        contentController.removeAllUserScripts()
+        Self.installScripts(for: rules, into: contentController)
+        webView.reload()
+    }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: messageHandlerName)
         #if DEBUG
         webView.configuration.userContentController.removeScriptMessageHandler(forName: debugHandlerName)
+        #endif
+    }
+
+    private static func installScripts(for rules: SiteRules, into contentController: WKUserContentController) {
+        contentController.addUserScript(WKUserScript(
+            source: filterScript(for: rules),
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true
+        ))
+        #if DEBUG
+        if let url = Bundle.main.url(forResource: "debug", withExtension: "js"),
+           let source = try? String(contentsOf: url, encoding: .utf8) {
+            contentController.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        }
         #endif
     }
 
@@ -117,7 +130,7 @@ struct FilteredWebView: UIViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
-        let rules: SiteRules
+        var rules: SiteRules
 
         init(rules: SiteRules) {
             self.rules = rules

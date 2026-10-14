@@ -5,6 +5,10 @@ struct BlockerApp: App {
     var body: some Scene {
         WindowGroup {
             RootTabView()
+                .task { await RulesStore.shared.refresh() }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    Task { await RulesStore.shared.refresh() }
+                }
         }
     }
 }
