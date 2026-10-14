@@ -151,24 +151,105 @@
   setInterval(check, 1000); // safety net in case the site changes the URL some other way
   check();
 
-  // 3. Some viewers play reels without changing the URL (e.g. a reel opened from a DM).
-  //    Stop any video that starts outside the allowed paths, and close the viewer it's in.
+  // 3. Videos. Allowed: everything on videoAllowedPaths (stories), and videos inside
+  //    videoAllowedIn containers (normal feed posts) unless that post is collapsed as a reel.
+  //    On singleVideoPaths (DM threads) the one reel the user tapped may play, but swiping to
+  //    the next one is blocked. Any other video is stopped and the viewer it plays in is closed.
   if (rules.videoAllowedPaths) {
     const collapsed = collapseSelectors.join(', ');
-    document.addEventListener('play', (e) => {
-      const video = e.target;
-      if (!(video instanceof HTMLVideoElement)) return;
-      if (rules.videoAllowedPaths.some((prefix) => location.pathname.startsWith(prefix))) return;
+    const allowedIn = (rules.videoAllowedIn || []).filter(validSelector).join(', ');
+    const singleVideoPaths = rules.singleVideoPaths || [];
 
+    let lastTap = { time: 0, target: null };
+    document.addEventListener('click', (e) => {
+      lastTap = { time: Date.now(), target: e.target };
+    }, true);
+
+    function closeViewer() {
+      const close = viewerCloseSelector && document.querySelector(viewerCloseSelector);
+      if (close) close.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    function stop(video, alsoCloseViewer) {
       video.muted = true;
       video.pause();
       report();
+      if (alsoCloseViewer) closeViewer();
+    }
 
-      const inFeed = collapsed && video.closest(collapsed);
-      const close = viewerCloseSelector && document.querySelector(viewerCloseSelector);
-      if (!inFeed && close) {
-        close.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // The full-screen viewer a video plays in: its nearest fixed-position ancestor.
+    function overlayOf(video) {
+      for (let el = video.parentElement; el && el !== document.body; el = el.parentElement) {
+        if (getComputedStyle(el).position === 'fixed') return el;
       }
+      return null;
+    }
+
+    // The one reel the user opened from a DM, and the swipe lock on its viewer.
+    let allowed = null; // { video, src, overlay }
+    function blockSwipe(e) {
+      if (e.pointerType && e.pointerType !== 'touch') return;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    function lockSwipe(overlay) {
+      overlay.addEventListener('touchmove', blockSwipe, { capture: true, passive: false });
+      overlay.addEventListener('pointermove', blockSwipe, { capture: true, passive: false });
+    }
+    function release() {
+      if (allowed && allowed.overlay) {
+        allowed.overlay.removeEventListener('touchmove', blockSwipe, { capture: true });
+        allowed.overlay.removeEventListener('pointermove', blockSwipe, { capture: true });
+      }
+      allowed = null;
+    }
+    // Viewer closed (video gone or hidden) or the user left the chat: unlock.
+    setInterval(() => {
+      if (!allowed) return;
+      const gone = !allowed.video.isConnected || allowed.video.getBoundingClientRect().height === 0;
+      const left = !singleVideoPaths.some((p) => location.pathname.startsWith(p));
+      if (gone || left) release();
+    }, 500);
+
+    function isSameReel(video) {
+      return allowed && allowed.video === video && allowed.src === video.currentSrc;
+    }
+
+    document.addEventListener('play', (e) => {
+      const video = e.target;
+      if (!(video instanceof HTMLVideoElement)) return;
+      const path = location.pathname;
+      if (rules.videoAllowedPaths.some((prefix) => path.startsWith(prefix))) return;
+      if (collapsed && video.closest(collapsed)) return stop(video, false);
+      if (allowedIn && video.closest(allowedIn)) return;
+
+      if (singleVideoPaths.some((prefix) => path.startsWith(prefix))) {
+        if (isSameReel(video)) return;
+        // A fresh tap outside the open viewer (e.g. on a reel in the chat) opens a new one.
+        const tappedOutside = Date.now() - lastTap.time < 2000 &&
+          !(allowed && allowed.overlay && allowed.overlay.contains(lastTap.target));
+        if (tappedOutside) {
+          release();
+          allowed = { video: video, src: video.currentSrc, overlay: overlayOf(video) };
+          if (allowed.overlay) lockSwipe(allowed.overlay);
+          debug('reelAllowed', { overlay: allowed.overlay ? allowed.overlay.tagName.toLowerCase() + ' ' +
+            Math.round(allowed.overlay.getBoundingClientRect().height) + 'px' : null });
+          return;
+        }
+        // Swiped (or autoplayed) to another reel: stop it and close the viewer.
+        stop(video, true);
+        release();
+        return;
+      }
+
+      stop(video, true);
     }, true);
+  }
+
+  function debug(kind, data) {
+    try {
+      const payload = Object.assign({ kind: kind, path: location.pathname }, data || {});
+      window.webkit.messageHandlers.blockerDebug.postMessage(JSON.stringify(payload));
+    } catch (e) {} // only debug builds listen
   }
 })();

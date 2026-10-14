@@ -23,6 +23,10 @@ struct SiteRules: Codable, Equatable {
     var collapseSelectors: [String]
     /// Pause any video that starts playing, except on these paths. Nil means videos are fine.
     var videoAllowedPaths: [String]?
+    /// Videos inside these elements may play (normal feed posts), unless the post is collapsed.
+    var videoAllowedIn: [String]
+    /// On these paths (DM threads) the one reel the user taps may play; swiping to the next is blocked.
+    var singleVideoPaths: [String]
     /// Clicked when a blocked video plays in a full-screen viewer (e.g. a reel opened from DMs).
     var viewerCloseSelector: String?
     /// Other sites that stay inside this screen, such as login pages. Everything else opens in Safari.
@@ -38,6 +42,8 @@ struct SiteRules: Codable, Equatable {
         hideSelectors = try container.decodeIfPresent([String].self, forKey: .hideSelectors) ?? []
         collapseSelectors = try container.decodeIfPresent([String].self, forKey: .collapseSelectors) ?? []
         videoAllowedPaths = try container.decodeIfPresent([String].self, forKey: .videoAllowedPaths)
+        videoAllowedIn = try container.decodeIfPresent([String].self, forKey: .videoAllowedIn) ?? []
+        singleVideoPaths = (try container.decodeIfPresent([String].self, forKey: .singleVideoPaths) ?? []).filter { !$0.isEmpty }
         viewerCloseSelector = try container.decodeIfPresent(String.self, forKey: .viewerCloseSelector)
         allowedHosts = try container.decodeIfPresent([String].self, forKey: .allowedHosts) ?? []
     }

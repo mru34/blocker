@@ -73,6 +73,24 @@
     send('feed', { state: state });
   }, 3000);
 
+  // Each feed post with a video, once: does it link to /reel/ (collapsed) or not (allowed to play)?
+  const seenVideoPosts = new WeakSet();
+  setInterval(() => {
+    for (const article of document.querySelectorAll('article')) {
+      if (seenVideoPosts.has(article) || !article.querySelector('video')) continue;
+      seenVideoPosts.add(article);
+      const links = Array.from(new Set(Array.from(article.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]'))
+        .map((a) => a.getAttribute('href').replace(/^\/[^/]+(?=\/(p|reel)\/)/, '')))).slice(0, 3);
+      send('videoPost', {
+        collapsed: getComputedStyle(article).height === '44px',
+        reelLink: !!article.querySelector('a[href*="/reel/"]'),
+        carousel: !!article.querySelector('[aria-label="Next"], [aria-label="Go back"]'),
+        links: links,
+        text: (article.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 60),
+      });
+    }
+  }, 2000);
+
   window.addEventListener('error', (e) => send('jserror', { message: String(e.message).slice(0, 200) }));
 
   setTimeout(dumpIcons, 4000);

@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "instagram": {
     "homeURL": "https://www.instagram.com/",
     "blockedPaths": [
@@ -18,11 +18,16 @@
       "a[href*='/reels/']"
     ],
     "collapseSelectors": [
-      "article:has(a[href*='/reel/'])",
-      "article:has(video)"
+      "article:has(a[href*='/reel/'])"
     ],
     "videoAllowedPaths": [
       "/stories/"
+    ],
+    "videoAllowedIn": [
+      "article"
+    ],
+    "singleVideoPaths": [
+      "/direct/"
     ],
     "viewerCloseSelector": "svg[aria-label='Close']",
     "allowedHosts": [
