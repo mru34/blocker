@@ -14,6 +14,16 @@ enum Diagnostics {
         #endif
     }
 
+    /// Debug builds only: launch with `-disableFilter YES` to load the sites without filter.js,
+    /// to compare speed with and without our filtering.
+    static var isFilterDisabled: Bool {
+        #if DEBUG
+        UserDefaults.standard.bool(forKey: "disableFilter")
+        #else
+        false
+        #endif
+    }
+
     static func log(_ text: String) {
         guard isEnabled else { return }
         fputs(text + "\n", stderr)

@@ -5,7 +5,11 @@ struct BlockerApp: App {
     var body: some Scene {
         WindowGroup {
             RootTabView()
-                .task { await RulesStore.shared.refresh() }
+                .task {
+                    // Instagram's site takes ~10 s to load, so start it now, before the user taps it.
+                    SiteSession.preload(.instagram, rules: RulesStore.shared.rules.instagram)
+                    await RulesStore.shared.refresh()
+                }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                     Task { await RulesStore.shared.refresh() }
                 }

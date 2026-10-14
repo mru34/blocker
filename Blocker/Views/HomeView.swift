@@ -17,13 +17,13 @@ struct HomeView: View {
 
                 VStack(spacing: 12) {
                     NavigationLink {
-                        FilteredSiteView(title: "Instagram", rules: rulesStore.rules.instagram)
+                        FilteredSiteView(title: "Instagram", site: .instagram, rules: rulesStore.rules.instagram)
                     } label: {
                         AppButtonLabel(name: "Instagram", systemImage: "camera", subtitle: "No Reels, no Explore")
                     }
 
                     NavigationLink {
-                        FilteredSiteView(title: "YouTube", rules: rulesStore.rules.youtube)
+                        FilteredSiteView(title: "YouTube", site: .youtube, rules: rulesStore.rules.youtube)
                     } label: {
                         AppButtonLabel(name: "YouTube", systemImage: "play.rectangle", subtitle: "No Shorts")
                     }

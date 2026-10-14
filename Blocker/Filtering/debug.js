@@ -91,6 +91,72 @@
     }
   }, 2000);
 
+  // Speed: load milestones, when the first feed post shows, data downloaded, and stutter
+  // (frames slower than 50 ms, where 16 ms is smooth).
+  const jank = { frames: 0, slow: 0, longest: 0, lost: 0 };
+  let lastFrame = performance.now();
+  (function frame(now) {
+    const gap = now - lastFrame;
+    lastFrame = now;
+    if (!document.hidden) {
+      jank.frames++;
+      if (gap > 50) {
+        jank.slow++;
+        jank.lost += gap - 16.7;
+        jank.longest = Math.max(jank.longest, gap);
+      }
+    }
+    requestAnimationFrame(frame);
+  })(performance.now());
+
+  function jankSummary() {
+    const s = { frames: jank.frames, slowFrames: jank.slow, longestMs: Math.round(jank.longest), lostMs: Math.round(jank.lost) };
+    jank.frames = jank.slow = jank.longest = jank.lost = 0;
+    return s;
+  }
+
+  function networkSummary() {
+    const resources = performance.getEntriesByType('resource');
+    const kb = resources.reduce((sum, r) => sum + (r.transferSize || 0), 0) / 1024;
+    // The slowest requests, and when they started/ended (ms since the page started loading).
+    const slowest = resources.slice().sort((a, b) => b.duration - a.duration).slice(0, 6).map((r) => {
+      const url = r.name.replace(/^https?:\/\//, '').replace(/\?.*$/, '');
+      return Math.round(r.startTime) + '-' + Math.round(r.responseEnd) + 'ms ' + r.initiatorType + ' ' + url.slice(0, 70);
+    });
+    // Big gaps where nothing was loading: the page was waiting on something else.
+    const ends = resources.map((r) => [r.startTime, r.responseEnd]).sort((a, b) => a[0] - b[0]);
+    let idle = 0, longestIdle = 0, cursor = 0;
+    for (const [start, end] of ends) {
+      if (start > cursor) { longestIdle = Math.max(longestIdle, start - cursor); idle += start - cursor; }
+      cursor = Math.max(cursor, end);
+    }
+    return { requests: resources.length, downloadedKB: Math.round(kb), slowest: slowest, longestIdleMs: Math.round(longestIdle) };
+  }
+
+  const startedAt = performance.now();
+  const firstPostTimer = setInterval(() => {
+    const found = document.querySelector('article');
+    const waited = performance.now() - startedAt;
+    if (!found && waited < 30000) return;
+    clearInterval(firstPostTimer);
+    const nav = performance.getEntriesByType('navigation')[0] || {};
+    send('speed', Object.assign({
+      firstPostMs: found ? Math.round(performance.now()) : null,
+      serverRespondedMs: Math.round(nav.responseStart || 0),
+      pageReadyMs: Math.round(nav.domContentLoadedEventEnd || 0),
+      pageLoadedMs: Math.round(nav.loadEventEnd || 0),
+    }, networkSummary(), { loadStutter: jankSummary() }));
+  }, 100);
+
+  // While scrolling: stutter per 5 seconds of scrolling.
+  let lastScrollY = scrollY;
+  setInterval(() => {
+    const scrolled = Math.abs(scrollY - lastScrollY);
+    lastScrollY = scrollY;
+    const summary = jankSummary();
+    if (scrolled > 200) send('scrollSpeed', Object.assign({ scrolledPx: Math.round(scrolled) }, summary));
+  }, 5000);
+
   window.addEventListener('error', (e) => send('jserror', { message: String(e.message).slice(0, 200) }));
 
   setTimeout(dumpIcons, 4000);
