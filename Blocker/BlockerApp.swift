@@ -22,16 +22,22 @@ struct BlockerApp: App {
 }
 
 struct RootTabView: View {
+    // Debug builds: launch with `-startTab blocked` (or `settings`) to open on that tab, for screenshots.
+    @State private var tab = UserDefaults.standard.string(forKey: "startTab") ?? "home"
+
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             HomeView()
                 .tabItem { Label("Home", systemImage: "house") }
+                .tag("home")
 
             BlockedAppsView()
                 .tabItem { Label("Blocked apps", systemImage: "lock.shield") }
+                .tag("blocked")
 
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tag("settings")
         }
     }
 }
