@@ -8,7 +8,7 @@ final class RulesStore: ObservableObject {
     static let shared = RulesStore()
 
     /// The live rules file. Edit it there to change what's blocked; nil skips fetching.
-    static let remoteURL: URL? = nil
+    static let remoteURL = URL(string: "https://gist.githubusercontent.com/mru34/ec1e1901fa70002ad416e64183d6cd2b/raw/rules.json")
 
     @Published private(set) var rules: RulesFile
     @Published private(set) var lastUpdated: Date?
@@ -36,12 +36,20 @@ final class RulesStore: ObservableObject {
             try FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: cacheURL, options: .atomic)
             lastUpdated = Date()
+            log("fetched rules version \(fresh.version)\(fresh == rules ? " (unchanged)" : ", applying")")
             if fresh != rules {
                 rules = fresh
             }
         } catch {
             // Offline or a bad file on the server: keep the rules we have.
+            log("rules fetch failed, keeping version \(rules.version): \(error)")
         }
+    }
+
+    private func log(_ text: String) {
+        #if DEBUG
+        fputs("[rules] \(text)\n", stderr)
+        #endif
     }
 
     private static let bundled: RulesFile = {
