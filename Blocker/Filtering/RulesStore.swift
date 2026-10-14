@@ -50,9 +50,7 @@ final class RulesStore: ObservableObject {
     }
 
     private func log(_ text: String) {
-        #if DEBUG
-        fputs("[rules] \(text)\n", stderr)
-        #endif
+        Diagnostics.log("[rules] \(text)")
     }
 
     private static let bundled: RulesFile = {

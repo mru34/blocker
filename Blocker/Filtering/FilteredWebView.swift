@@ -108,12 +108,11 @@ struct FilteredWebView: UIViewRepresentable {
             injectionTime: .atDocumentEnd,
             forMainFrameOnly: true
         ))
-        #if DEBUG
-        if let url = Bundle.main.url(forResource: "debug", withExtension: "js"),
+        if Diagnostics.isEnabled,
+           let url = Bundle.main.url(forResource: "debug", withExtension: "js"),
            let source = try? String(contentsOf: url, encoding: .utf8) {
             contentController.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
-        #endif
     }
 
     private static func filterScript(for rules: SiteRules) -> String {
@@ -198,9 +197,7 @@ struct FilteredWebView: UIViewRepresentable {
         }
 
         private func debugLog(_ text: String) {
-            #if DEBUG
-            fputs("[\(rules.domain)] \(text)\n", stderr)
-            #endif
+            Diagnostics.log("[\(rules.domain)] \(text)")
         }
     }
 }
