@@ -25,17 +25,21 @@ struct SiteRules: Codable, Equatable {
     var videoAllowedPaths: [String]?
     /// Clicked when a blocked video plays in a full-screen viewer (e.g. a reel opened from DMs).
     var viewerCloseSelector: String?
+    /// Other sites that stay inside this screen, such as login pages. Everything else opens in Safari.
+    var allowedHosts: [String]
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         homeURL = try container.decode(URL.self, forKey: .homeURL)
-        blockedPaths = try container.decodeIfPresent([String].self, forKey: .blockedPaths) ?? []
-        allowedPaths = try container.decodeIfPresent([String].self, forKey: .allowedPaths) ?? []
+        // Drop empty entries: every path "contains" "", so one stray "" would block the whole site.
+        blockedPaths = (try container.decodeIfPresent([String].self, forKey: .blockedPaths) ?? []).filter { !$0.isEmpty }
+        allowedPaths = (try container.decodeIfPresent([String].self, forKey: .allowedPaths) ?? []).filter { !$0.isEmpty }
         redirects = try container.decodeIfPresent([String: String].self, forKey: .redirects) ?? [:]
         hideSelectors = try container.decodeIfPresent([String].self, forKey: .hideSelectors) ?? []
         collapseSelectors = try container.decodeIfPresent([String].self, forKey: .collapseSelectors) ?? []
         videoAllowedPaths = try container.decodeIfPresent([String].self, forKey: .videoAllowedPaths)
         viewerCloseSelector = try container.decodeIfPresent(String.self, forKey: .viewerCloseSelector)
+        allowedHosts = try container.decodeIfPresent([String].self, forKey: .allowedHosts) ?? []
     }
 
     func isBlocked(path: String) -> Bool {
@@ -55,5 +59,11 @@ struct SiteRules: Codable, Equatable {
     func matches(host: String?) -> Bool {
         guard let host else { return false }
         return host == domain || host.hasSuffix("." + domain)
+    }
+
+    /// The site itself or one of its allowedHosts (subdomains included).
+    func isInternal(host: String?) -> Bool {
+        guard let host else { return false }
+        return matches(host: host) || allowedHosts.contains { host == $0 || host.hasSuffix("." + $0) }
     }
 }

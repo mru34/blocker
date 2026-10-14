@@ -7,10 +7,45 @@
   const rules = __BLOCKER_RULES__;
   const home = new URL(rules.homeURL).pathname || '/';
 
+  // The rules come from a file anyone on the team edits, so a typo must not break the page:
+  // drop any selector the browser can't parse (a stray brace could otherwise restyle everything).
+  // Browsers auto-close a missing ] or ) when testing a selector, but inside a stylesheet the
+  // open bracket swallows every rule after it, so check the pairs ourselves.
+  function balanced(selector) {
+    const open = [];
+    let quote = null;
+    for (const ch of selector) {
+      if (quote) {
+        if (ch === quote) quote = null;
+      } else if (ch === '"' || ch === "'") {
+        quote = ch;
+      } else if (ch === '[' || ch === '(') {
+        open.push(ch);
+      } else if (ch === ']' || ch === ')') {
+        if (open.pop() !== (ch === ']' ? '[' : '(')) return false;
+      }
+    }
+    return quote === null && open.length === 0;
+  }
+
+  function validSelector(selector) {
+    if (typeof selector !== 'string' || selector.trim() === '' || /[{}]/.test(selector)) return false;
+    if (!balanced(selector)) return false;
+    try {
+      document.createDocumentFragment().querySelector(selector);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  const hideSelectors = rules.hideSelectors.filter(validSelector);
+  const collapseSelectors = rules.collapseSelectors.filter(validSelector);
+  const viewerCloseSelector = validSelector(rules.viewerCloseSelector) ? rules.viewerCloseSelector : null;
+
   // 1. Hide links, and shrink feed items to a slim bar. CSS also applies to items loaded later.
   //    Collapsed items keep a small height: zero-height posts make Instagram's feed go blank.
-  const css = rules.hideSelectors.map((s) => s + ' { display: none !important; }');
-  for (const s of rules.collapseSelectors) {
+  const css = hideSelectors.map((s) => s + ' { display: none !important; }');
+  for (const s of collapseSelectors) {
     css.push(
       s + ' { height: 44px !important; min-height: 0 !important; overflow: hidden !important; position: relative !important; }',
       s + ' > * { visibility: hidden !important; }',
@@ -119,7 +154,7 @@
   // 3. Some viewers play reels without changing the URL (e.g. a reel opened from a DM).
   //    Stop any video that starts outside the allowed paths, and close the viewer it's in.
   if (rules.videoAllowedPaths) {
-    const collapsed = rules.collapseSelectors.join(', ');
+    const collapsed = collapseSelectors.join(', ');
     document.addEventListener('play', (e) => {
       const video = e.target;
       if (!(video instanceof HTMLVideoElement)) return;
@@ -130,7 +165,7 @@
       report();
 
       const inFeed = collapsed && video.closest(collapsed);
-      const close = rules.viewerCloseSelector && document.querySelector(rules.viewerCloseSelector);
+      const close = viewerCloseSelector && document.querySelector(viewerCloseSelector);
       if (!inFeed && close) {
         close.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       }

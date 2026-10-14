@@ -138,9 +138,19 @@ struct FilteredWebView: UIViewRepresentable {
 
         // Full page loads. In-app (pushState) navigation is handled by filter.js.
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
-            guard action.targetFrame?.isMainFrame == true,
-                  let url = action.request.url,
-                  rules.matches(host: url.host),
+            guard action.targetFrame?.isMainFrame == true, let url = action.request.url else { return .allow }
+
+            // Other websites (a link in someone's bio, mailto:, ...) open in Safari or their own app,
+            // instead of trapping the user inside this screen.
+            let scheme = url.scheme?.lowercased() ?? ""
+            let isWeb = scheme == "http" || scheme == "https"
+            if (isWeb && !rules.isInternal(host: url.host)) || (!isWeb && !["about", "blob", "data"].contains(scheme)) {
+                debugLog("opening outside the app: \(url.absoluteString)")
+                UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                return .cancel
+            }
+
+            guard rules.matches(host: url.host),
                   let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.path // keeps the trailing slash
             else { return .allow }
 
@@ -155,6 +165,17 @@ struct FilteredWebView: UIViewRepresentable {
                 return .cancel
             }
             return .allow
+        }
+
+        // iOS may kill the page's process to free memory while the app is in the background,
+        // which leaves a blank white screen. Load it again.
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            debugLog("web content process ended, reloading")
+            if webView.url != nil {
+                webView.reload()
+            } else {
+                webView.load(URLRequest(url: rules.homeURL))
+            }
         }
 
         // Links that open a new window (target="_blank") load in this web view instead,
