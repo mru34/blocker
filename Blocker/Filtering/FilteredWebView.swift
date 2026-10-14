@@ -10,7 +10,7 @@ struct FilteredSiteView: View {
 
     var body: some View {
         FilteredWebView(rules: rules, handle: handle)
-            .ignoresSafeArea(edges: .bottom)
+            .ignoresSafeArea(.container, edges: .bottom) // not .keyboard: the page must shrink so the DM text box stays visible
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)

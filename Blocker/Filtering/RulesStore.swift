@@ -27,7 +27,10 @@ final class RulesStore: ObservableObject {
 
     func refresh() async {
         guard let remoteURL = Self.remoteURL else { return }
-        let request = URLRequest(url: remoteURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+        // A unique query string skips GitHub's CDN cache, which otherwise serves old rules for ~5 minutes.
+        var components = URLComponents(url: remoteURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970)))]
+        let request = URLRequest(url: components?.url ?? remoteURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { return }

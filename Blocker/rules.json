@@ -1,24 +1,36 @@
 {
-  "version": 1,
+  "version": 3,
   "instagram": {
     "homeURL": "https://www.instagram.com/",
-    "blockedPaths": ["/reels/", "/reel/", "/explore/"],
-    "allowedPaths": ["/explore/search"],
+    "blockedPaths": [
+      "/reels/",
+      "/reel/",
+      "/explore/"
+    ],
+    "allowedPaths": [
+      "/explore/search"
+    ],
     "redirects": {
       "/explore/": "/explore/search/",
       "/explore": "/explore/search/"
     },
-    "hideSelectors": ["a[href*='/reels/']"],
+    "hideSelectors": [
+      "a[href*='/reels/']"
+    ],
     "collapseSelectors": [
       "article:has(a[href*='/reel/'])",
       "article:has(video)"
     ],
-    "videoAllowedPaths": ["/stories/"],
+    "videoAllowedPaths": [
+      "/stories/"
+    ],
     "viewerCloseSelector": "svg[aria-label='Close']"
   },
   "youtube": {
     "homeURL": "https://m.youtube.com/",
-    "blockedPaths": ["/shorts"],
+    "blockedPaths": [
+      "/shorts"
+    ],
     "hideSelectors": [
       "ytm-reel-shelf-renderer",
       "ytm-shorts-lockup-view-model",

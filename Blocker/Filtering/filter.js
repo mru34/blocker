@@ -22,24 +22,31 @@
   style.textContent = css.join('\n');
   (document.head || document.documentElement).appendChild(style);
 
-  // Small "Reel blocked" toast, and tells the app to count it (at most once every 3s).
+  // "Reel blocked" toast on every block; the app's counter goes up at most once every 3s
+  // so one reel that fires several events counts once.
   let lastReport = 0;
+  let toast = null;
+  let toastTimer = null;
   function report() {
-    if (Date.now() - lastReport < 3000) return;
-    lastReport = Date.now();
-    try {
-      window.webkit.messageHandlers.blocker.postMessage('blocked');
-    } catch (e) {}
+    if (Date.now() - lastReport > 3000) {
+      lastReport = Date.now();
+      try {
+        window.webkit.messageHandlers.blocker.postMessage('blocked');
+      } catch (e) {}
+    }
 
-    const toast = document.createElement('div');
-    toast.textContent = 'Reel blocked';
-    toast.style.cssText =
-      'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:2147483647;' +
-      'padding:8px 14px;border-radius:16px;background:rgba(0,0,0,.8);color:#fff;' +
-      'font:600 14px -apple-system,sans-serif;pointer-events:none;transition:opacity .4s';
-    document.documentElement.appendChild(toast);
-    setTimeout(() => (toast.style.opacity = '0'), 1200);
-    setTimeout(() => toast.remove(), 1700);
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.textContent = 'Reel blocked';
+      toast.style.cssText =
+        'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:2147483647;' +
+        'padding:8px 14px;border-radius:16px;background:rgba(0,0,0,.8);color:#fff;' +
+        'font:600 14px -apple-system,sans-serif;pointer-events:none;transition:opacity .4s';
+      document.documentElement.appendChild(toast);
+    }
+    toast.style.opacity = '1';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (toast.style.opacity = '0'), 1200);
   }
 
   // 2. These sites are single-page apps, so most taps never reach the native navigation check.
@@ -49,6 +56,25 @@
     return rules.blockedPaths.some((part) => path.includes(part));
   }
 
+  // Taps on links to blocked pages are stopped before the site starts navigating,
+  // so the reels page never flashes up. This runs before the site's own click handlers.
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest && e.target.closest('a[href]');
+    if (!link) return;
+    let url;
+    try {
+      url = new URL(link.getAttribute('href'), location.href);
+    } catch (err) {
+      return;
+    }
+    if (url.origin !== location.origin || rules.redirects[url.pathname]) return;
+    if (!isBlocked(url.pathname)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    report();
+  }, true);
+
+  // Fallback for navigation that doesn't come from a link tap.
   let bouncing = false;
   function check() {
     const path = location.pathname;
