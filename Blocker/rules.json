@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "instagram": {
     "homeURL": "https://www.instagram.com/",
     "blockedPaths": [
@@ -33,7 +33,8 @@
     "allowedHosts": [
       "facebook.com",
       "meta.com"
-    ]
+    ],
+    "readySelector": "article"
   },
   "youtube": {
     "homeURL": "https://m.youtube.com/",
@@ -50,6 +51,7 @@
     "allowedHosts": [
       "google.com",
       "youtu.be"
-    ]
+    ],
+    "readySelector": "ytm-rich-item-renderer, ytm-video-with-context-renderer, ytm-compact-video-renderer"
   }
 }

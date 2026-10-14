@@ -57,32 +57,107 @@
   style.textContent = css.join('\n');
   (document.head || document.documentElement).appendChild(style);
 
-  // "Reel blocked" toast on every block; the app's counter goes up at most once every 3s
-  // so one reel that fires several events counts once.
-  let lastReport = 0;
+  function post(message) {
+    try {
+      window.webkit.messageHandlers.blocker.postMessage(message);
+    } catch (e) {}
+  }
+
+  // "Reel blocked" toast (plus a tap of haptic feedback from the app) on every block. The app's
+  // counter goes up at most once every 3s, so one reel that fires several events counts once.
+  let lastCounted = 0;
   let toast = null;
   let toastTimer = null;
-  function report() {
-    if (Date.now() - lastReport > 3000) {
-      lastReport = Date.now();
-      try {
-        window.webkit.messageHandlers.blocker.postMessage('blocked');
-      } catch (e) {}
-    }
-
+  function showToast() {
     if (!toast) {
       toast = document.createElement('div');
       toast.textContent = 'Reel blocked';
       toast.style.cssText =
-        'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:2147483647;' +
-        'padding:8px 14px;border-radius:16px;background:rgba(0,0,0,.8);color:#fff;' +
-        'font:600 14px -apple-system,sans-serif;pointer-events:none;transition:opacity .4s';
+        'position:fixed;left:50%;bottom:96px;z-index:2147483647;pointer-events:none;' +
+        'padding:10px 18px;border-radius:999px;background:#FFD43B;color:#14110F;' +
+        'font:700 15px -apple-system,sans-serif;letter-spacing:-0.01em;' +
+        'box-shadow:0 6px 20px rgba(0,0,0,.25);' +
+        'transform:translate(-50%,16px) scale(.9);opacity:0;' +
+        'transition:transform .25s cubic-bezier(.2,.9,.3,1.3),opacity .2s';
       document.documentElement.appendChild(toast);
     }
     toast.style.opacity = '1';
+    toast.style.transform = 'translate(-50%,0) scale(1)';
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (toast.style.opacity = '0'), 1200);
+    toastTimer = setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translate(-50%,16px) scale(.9)';
+    }, 1300);
   }
+  window.__blockerToast = showToast; // the app calls this for blocks it makes itself
+
+  function report() {
+    const counted = Date.now() - lastCounted > 3000;
+    if (counted) lastCounted = Date.now();
+    post({ event: 'blocked', counted: counted });
+    showToast();
+  }
+
+  // Tell the app when the page shows real content, so it can drop its loading screen.
+  let ready = false;
+  function signalReady() {
+    if (ready) return;
+    ready = true;
+    post({ event: 'ready' });
+  }
+  const readySelector = validSelector(rules.readySelector) ? rules.readySelector : null;
+  const readyStarted = Date.now();
+  const readyTimer = setInterval(() => {
+    if ((readySelector && document.querySelector(readySelector)) || Date.now() - readyStarted > 15000) {
+      clearInterval(readyTimer);
+      signalReady();
+    }
+  }, 150);
+  if (!readySelector) {
+    clearInterval(readyTimer);
+    signalReady();
+  }
+
+  // Counts for the Home stats and the rule-health check: feed posts seen, reels hidden in the
+  // feed (each post once), and which of our selectors matched anything. No names or links leave
+  // the page, only counts and our own selectors.
+  const seenPosts = new Set();
+  const hiddenPosts = new Set();
+  const matchedSelectors = new Set();
+  let newPosts = 0;
+  let newHidden = 0;
+  let newMatched = [];
+  function postId(article) {
+    const link = article.querySelector('a[href*="/p/"], a[href*="/reel/"]');
+    const match = link && link.getAttribute('href').match(/\/(p|reel)\/([^/?#]+)/);
+    return match ? match[2] : null;
+  }
+  setInterval(() => {
+    for (const article of document.querySelectorAll('article')) {
+      const id = postId(article);
+      if (!id) continue;
+      if (!seenPosts.has(id)) {
+        seenPosts.add(id);
+        newPosts++;
+      }
+      if (!hiddenPosts.has(id) && collapseSelectors.some((s) => article.matches(s))) {
+        hiddenPosts.add(id);
+        newHidden++;
+      }
+    }
+    for (const selector of hideSelectors.concat(collapseSelectors)) {
+      if (!matchedSelectors.has(selector) && document.querySelector(selector)) {
+        matchedSelectors.add(selector);
+        newMatched.push(selector);
+      }
+    }
+    if (newPosts || newHidden || newMatched.length) {
+      post({ event: 'stats', posts: newPosts, hidden: newHidden, matched: newMatched });
+      newPosts = 0;
+      newHidden = 0;
+      newMatched = [];
+    }
+  }, 3000);
 
   // 2. These sites are single-page apps, so most taps never reach the native navigation check.
   //    Watch the path ourselves and bounce off blocked pages.

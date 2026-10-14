@@ -22,6 +22,7 @@ struct FilteredSiteView: View {
         let session = SiteSession.shared(site, rules: rules)
         FilteredWebView(session: session, rules: rules)
             .ignoresSafeArea(.container, edges: .bottom) // not .keyboard: the page must shrink so the DM text box stays visible
+            .overlay { LoadingScreen(session: session, siteName: title, blockedThing: site == .youtube ? "Shorts" : "Reels") }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
@@ -37,6 +38,44 @@ struct FilteredSiteView: View {
             }
             .onAppear { session.willShow() }
             .onDisappear { session.didHide() }
+    }
+}
+
+/// Brand screen shown while a site loads, instead of a blank white page.
+private struct LoadingScreen: View {
+    @ObservedObject var session: SiteSession
+    let siteName: String
+    let blockedThing: String
+
+    var body: some View {
+        ZStack {
+            if !session.isReady {
+                ZStack {
+                    Color.brandYellow.ignoresSafeArea()
+                    VStack(spacing: 18) {
+                        Image("Logo")
+                            .resizable()
+                            .frame(width: 96, height: 96)
+                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+                        VStack(spacing: 4) {
+                            Text("Loading \(siteName)")
+                                .font(.headline)
+                            Text("\(blockedThing) not included.")
+                                .font(.subheadline)
+                                .opacity(0.7)
+                        }
+                        .foregroundStyle(Color.brandInk)
+                        ProgressView(value: max(session.progress, 0.05))
+                            .tint(.brandInk)
+                            .frame(width: 160)
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.3), value: session.isReady)
+        .allowsHitTesting(!session.isReady)
     }
 }
 
@@ -58,7 +97,7 @@ struct FilteredWebView: UIViewRepresentable {
 /// One web view per site that lives as long as the app, so leaving Instagram and coming back is
 /// instant (the site itself takes ~10 s to load) and it can be preloaded when the app starts.
 @MainActor
-final class SiteSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+final class SiteSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     private static var sessions: [Site: SiteSession] = [:]
 
     static func shared(_ site: Site, rules: SiteRules) -> SiteSession {
@@ -92,6 +131,15 @@ final class SiteSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptM
     private var loggedFirstLoad = false
     private var hiddenSince: Date?
 
+    /// False while a page load is under way and the site hasn't shown real content yet
+    /// (filter.js says when, via the site's readySelector). Drives the loading screen.
+    @Published private(set) var isReady = false
+    @Published private(set) var progress: Double = 0
+    private var progressObservation: NSKeyValueObservation?
+    private var loadID = 0
+
+    private static let haptic = UIImpactFeedbackGenerator(style: .rigid)
+
     private init(rules: SiteRules) {
         self.rules = rules
 
@@ -116,7 +164,23 @@ final class SiteSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptM
         webView.allowsBackForwardNavigationGestures = true
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        progressObservation = webView.observe(\.estimatedProgress) { [weak self] webView, _ in
+            let progress = webView.estimatedProgress
+            Task { @MainActor in self?.progress = progress }
+        }
+        beginLoading()
         webView.load(URLRequest(url: rules.homeURL))
+    }
+
+    /// Every full load we start shows the loading screen until the page is ready.
+    private func beginLoading() {
+        loadID += 1
+        isReady = false
+    }
+
+    private func markReady() {
+        guard !isReady else { return }
+        isReady = true
     }
 
     /// New rules from the server: re-inject them and reload.
@@ -126,12 +190,14 @@ final class SiteSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptM
         let contentController = webView.configuration.userContentController
         contentController.removeAllUserScripts()
         Self.installScripts(for: newRules, into: contentController)
+        beginLoading()
         webView.reload()
     }
 
     // Instagram's story composer can hang after "Share story"; reloading it just hangs again,
     // so from a create screen go back to the feed instead.
     func reload() {
+        beginLoading()
         if webView.url?.path.hasPrefix("/create") == true {
             webView.load(URLRequest(url: rules.homeURL))
         } else {
@@ -142,6 +208,7 @@ final class SiteSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptM
     func willShow() {
         if let hiddenSince, Date().timeIntervalSince(hiddenSince) > Self.staleAfter {
             debugLog("hidden for over 30 min, reloading")
+            beginLoading()
             webView.reload()
         }
         hiddenSince = nil
@@ -181,6 +248,15 @@ final class SiteSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptM
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        RuleHealth.shared.record(domain: rules.domain, pageLoads: 1)
+        // If filter.js never says the page is ready (e.g. readySelector no longer matches),
+        // don't keep the loading screen up for long.
+        let load = loadID
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self, self.loadID == load else { return }
+            self.markReady()
+        }
+
         guard !loggedFirstLoad else { return }
         loggedFirstLoad = true
         let ms = Int(Date().timeIntervalSince(createdAt) * 1000)
@@ -213,6 +289,8 @@ final class SiteSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptM
         }
         if rules.isBlocked(path: path) {
             BlockStats.shared.recordBlock()
+            Self.haptic.impactOccurred()
+            webView.evaluateJavaScript("window.__blockerToast && window.__blockerToast()", completionHandler: nil)
             return .cancel
         }
         return .allow
@@ -222,6 +300,7 @@ final class SiteSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptM
     // which leaves a blank white screen. Load it again.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         debugLog("web content process ended, reloading")
+        beginLoading()
         if webView.url != nil {
             webView.reload()
         } else {
@@ -246,9 +325,27 @@ final class SiteSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptM
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == Self.debugHandlerName {
             debugLog("\(message.body)")
-        } else if message.body as? String == "blocked" {
-            debugLog("blocked by filter.js")
-            BlockStats.shared.recordBlock()
+            return
+        }
+        guard let body = message.body as? [String: Any], let event = body["event"] as? String else { return }
+        switch event {
+        case "blocked":
+            Self.haptic.impactOccurred()
+            if body["counted"] as? Bool == true {
+                debugLog("blocked by filter.js")
+                BlockStats.shared.recordBlock()
+            }
+        case "ready":
+            markReady()
+        case "stats":
+            let posts = body["posts"] as? Int ?? 0
+            let hidden = body["hidden"] as? Int ?? 0
+            let matched = body["matched"] as? [String] ?? []
+            BlockStats.shared.recordHidden(hidden)
+            RuleHealth.shared.record(domain: rules.domain, posts: posts, hidden: hidden, matched: matched)
+            debugLog("stats: +\(posts) posts, +\(hidden) reels hidden, matched \(matched)")
+        default:
+            break
         }
     }
 

@@ -1,0 +1,22 @@
+name = "blocker-health"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# Stores the anonymous daily reports. Create it with:
+#   npx wrangler kv namespace create REPORTS
+# and paste the id it prints here.
+[[kv_namespaces]]
+binding = "REPORTS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Check yesterday's reports every day at 02:00 UTC.
+[triggers]
+crons = ["0 2 * * *"]
+
+[vars]
+RULES_URL = "https://gist.githubusercontent.com/mru34/ec1e1901fa70002ad416e64183d6cd2b/raw/rules.json"
+GITHUB_REPO = "mru34/blocker"
+
+# Secret, not in this file: a fine-grained GitHub token with "Issues: read and write" on
+# mru34/blocker only. Set it with:
+#   npx wrangler secret put GITHUB_TOKEN

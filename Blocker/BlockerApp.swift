@@ -9,6 +9,8 @@ struct BlockerApp: App {
                     // Instagram's site takes ~10 s to load, so start it now, before the user taps it.
                     SiteSession.preload(.instagram, rules: RulesStore.shared.rules.instagram)
                     await RulesStore.shared.refresh()
+                    let rules = RulesStore.shared.rules
+                    await RuleHealth.shared.sendReports(to: rules.healthReportURL, rulesVersion: rules.version)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                     Task { await RulesStore.shared.refresh() }

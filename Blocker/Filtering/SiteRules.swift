@@ -5,6 +5,8 @@ struct RulesFile: Codable, Equatable {
     var version: Int
     var instagram: SiteRules
     var youtube: SiteRules
+    /// Where the app sends its anonymous daily rule-health counts. Nil (the default) sends nothing.
+    var healthReportURL: URL?
 }
 
 /// What to block on one site. Only homeURL is required in the JSON; everything else defaults to empty.
@@ -31,6 +33,8 @@ struct SiteRules: Codable, Equatable {
     var viewerCloseSelector: String?
     /// Other sites that stay inside this screen, such as login pages. Everything else opens in Safari.
     var allowedHosts: [String]
+    /// Shows up once the page has real content (e.g. a feed post); the loading screen waits for it.
+    var readySelector: String?
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -46,6 +50,7 @@ struct SiteRules: Codable, Equatable {
         singleVideoPaths = (try container.decodeIfPresent([String].self, forKey: .singleVideoPaths) ?? []).filter { !$0.isEmpty }
         viewerCloseSelector = try container.decodeIfPresent(String.self, forKey: .viewerCloseSelector)
         allowedHosts = try container.decodeIfPresent([String].self, forKey: .allowedHosts) ?? []
+        readySelector = try container.decodeIfPresent(String.self, forKey: .readySelector)
     }
 
     func isBlocked(path: String) -> Bool {
